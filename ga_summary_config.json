@@ -1,0 +1,39 @@
+{
+	"Dimensions": [
+		{
+			"name": "ga:date"
+		},
+		{
+			"name": "ga:country"
+		}
+	],
+	"Metrics": [
+		{
+			"expression": "ga:sessions"
+		},
+		{
+			"expression": "ga:percentNewSessions"
+		},
+		{
+			"expression": "ga:newUsers"
+		},
+		{
+			"expression": "ga:bounceRate"
+		},
+		{
+			"expression": "ga:transactions"
+		},
+		{
+			"expression": "ga:transactionRevenue"
+		},
+		{
+			"expression": "ga:transactionsPerSession"
+		}
+	],
+	"dimensionFilterClauses": [
+		{
+			"filters": ["none"]
+		}
+	],
+	"Segment": []
+}
