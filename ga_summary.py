@@ -21,27 +21,26 @@ home = path.expanduser("~")
 CLIENT_SECRETS_PATH = path.expanduser("~") + '/.credentials/your_client_secret_file.json'
 class SampledDataError(Exception): pass # stop the program when sampled data received
 
-#Configuration section
+# configuration section
 def init_config():
     global args
     argList = get_arg_list()
     return argList
 
-# Listing the arguments that can be passed in though the command line
 def get_arg_list():
     parser = argparse.ArgumentParser(description='Parses command line arguments')
-    parser.add_argument('--view_id', type=str, required=True, help='Unique view ID for retrieving analytics data')
-    parser.add_argument('--web_property_id', type=str, help= 'The GA web property ID (UA-#########-#)')
+    parser.add_argument('--view_id', type=str, required=True, help= 'Unique GA view ID for retrieving analytics data')
+	parser.add_argument('--web_property_id', type=str, help= 'The GA web property ID (UA-#########-#)')
     parser.add_argument('--profile_id', type=str, help='The GA profile ID (########)')
-    parser.add_argument('--username', type=str, required=True, help='The PostgreSQL username')
-    parser.add_argument('--password', type=str, required=True, help='The PostgreSQL password for the username')
-    parser.add_argument('--host', type=str, required=True, help='The PostgreSQL server')
-    parser.add_argument('--port', type=str, default='5432', help='The PostgreSQL server port')
-    parser.add_argument('--database', type=str, help='The name of the PostgreSQL DB')
-    parser.add_argument('--insert_table', type=str, required=True, help='Table where the data will be inserted')
-    parser.add_argument('--col_num', type=int, required=True, help='Number of columns in the table')
-    parser.add_argument('--dateStart', type=str, default='none', help='Start of report data date range')
-    parser.add_argument('--dateEnd', type=str, default='none', help='End of report data date range')
+    parser.add_argument('--username', type=str, required=True, help= 'PostgreSQL username')
+    parser.add_argument('--password', type=str, required=True, help=  'PostgreSQL password for username')
+    parser.add_argument('--host', type=str, required=True, help='PostgreSQL server')
+    parser.add_argument('--port', type=str, default='5432', help='PostgreSQL server port')
+    parser.add_argument('--database', type=str, default='fitbit_db', help='Name of PostgreSQL DB')
+    parser.add_argument('--insert_table', type=str, required=True, help='Table where data will be inserted')
+    parser.add_argument('--col_num', type=int, default=11, help='Number of columns in insert table')
+    parser.add_argument('--date_start', type=str, default=str(datetime.today() - timedelta(days=1))[:10], help='Date to start pulling data from')
+    parser.add_argument('--date_end', type=str, default=str(datetime.today() - timedelta(days=1))[:10], help='Date to stop pulling data from')
     return parser.parse_args()
 
 # perform error logging output
@@ -73,7 +72,8 @@ def initialize_analyticsreporting():
   storage = file.Storage('analyticsreporting.dat')
   credentials = storage.get()
   if credentials is None or credentials.invalid:
-    credentials = tools.run_flow(flow, storage)
+	flags = tools.argparser.parse_args('--auth_host_name localhost --logging_level INFO --noauth_local_webserver'.split())
+    credentials = tools.run_flow(flow, storage, flags)
   http = credentials.authorize(http=httplib2.Http())
 
   # Build the service object.
@@ -190,27 +190,13 @@ def main():
 
         cur = conn.cursor()
 
-        # query the core reporting API
-        # set the start and end as yesterday's date if no dates given
-        if args.dateStart == 'none':
-            dateStart = str(datetime.today() - timedelta(days=1))[:10]
-        else:
-            dateStart = args.dateStart
-
-        if args.dateEnd == 'none':
-            dateEnd = str(datetime.today() - timedelta(days=1))[:10]
-        else:
-            dateEnd = args.dateEnd
-
         pag_token = '0' # continuation token to get the next page of results, starts at 0
-
-        results = get_results(service, pag_token, args.view_id, dateStart, dateEnd, gareportconfig["Dimensions"], gareportconfig["Metrics"], gareportconfig["dimensionFilterClauses"][0])
+        results = get_results(service, pag_token, args.view_id, dateStart, dateEnd, gareportconfig["Dimensions"], gareportconfig["Metrics"], gareportconfig["dimensionFilterClauses"][0]) # query the core reporting API
         print 'Report date range: ' + dateStart + ' -> ' + dateEnd
         write_results(results, cur, conn, args.web_property_id, args.profile_id, args.insert_table, args.col_num)
 
         if 'rowCount' not in results['reports'][0]['data']:
             print 'report contains no data!'
-
         else: # use page tokens to paginate results
             if (int(pag_token) <= int(results['reports'][0]['data']['rowCount'])):
                 pag_token = str(int(pag_token) + 5000) # page size is set to 5000, get next 5000 rows
