@@ -6,13 +6,18 @@ from csv import writer
 from datetime import date, timedelta, datetime
 import httplib2
 import json
-import logging
 from os import path
 
 from apiclient.discovery import build
 from apiclient.errors import HttpError
+import gen_utils
 from oauth2client import client, file, tools
 import psycopg2
+import yaml
+
+class struct:
+    def __init__(self, **entries): 
+        self.__dict__.update(entries)
 
 SCOPES = ['https://www.googleapis.com/auth/analytics.readonly']
 DISCOVERY_URI = ('https://analyticsreporting.googleapis.com/$discovery/rest')
@@ -32,26 +37,11 @@ def get_arg_list():
     parser.add_argument('--view_id', type=str, required=True, help= 'Unique GA view ID for retrieving analytics data')
 	parser.add_argument('--web_property_id', type=str, help= 'The GA web property ID (UA-#########-#)')
     parser.add_argument('--profile_id', type=str, help='The GA profile ID (########)')
-    parser.add_argument('--username', type=str, required=True, help= 'PostgreSQL username')
-    parser.add_argument('--password', type=str, required=True, help=  'PostgreSQL password for username')
-    parser.add_argument('--host', type=str, required=True, help='PostgreSQL server')
-    parser.add_argument('--port', type=str, default='5432', help='PostgreSQL server port')
-    parser.add_argument('--database', type=str, default='fitbit_db', help='Name of PostgreSQL DB')
-    parser.add_argument('--insert_table', type=str, required=True, help='Table where data will be inserted')
+    parser.add_argument('--insert_table', type=str, required=True, help='PostgreSQL table where data will be inserted')
     parser.add_argument('--col_num', type=int, default=11, help='Number of columns in insert table')
     parser.add_argument('--date_start', type=str, default=str(datetime.today() - timedelta(days=1))[:10], help='Date to start pulling data from')
     parser.add_argument('--date_end', type=str, default=str(datetime.today() - timedelta(days=1))[:10], help='Date to stop pulling data from')
     return parser.parse_args()
-
-# perform error logging output
-def do_error_logging(message):
-    ERRORLOG = './' + str(datetime.today().strftime('%Y%m%d_%H%M%S_')) + str(path.basename(__file__)) + '_errorlog.txt'
-    if path.exists(ERRORLOG):
-        pass # skip creating new error log if it already exists
-    else:
-        logging.basicConfig(filename=ERRORLOG, level=logging.DEBUG, format='%(asctime)s [%(filename)s:%(lineno)s - %(funcName)2s()] %(message)s', datefmt='%Y%m%d %I:%M:%S %p')
-    logging.exception(message)
-    return
 
 def initialize_analyticsreporting():
   """Initializes the analyticsreporting service object.
@@ -82,7 +72,7 @@ def initialize_analyticsreporting():
 
 def get_results(service, pag_token, view_id, start, end, dim, met, fil):
   # Use the Analytics Service Object to query the Analytics Reporting API V4
-  if fil['filters'][0] != u'none':
+  if fil['filters'][0] != 'none':
       return service.reports().batchGet(
         body={
             'reportRequests': [
@@ -145,7 +135,7 @@ def write_results(results, cur, conn, webpropertyid, profileid, table, col):
     for report in results.get('reports', []):
         sampled = ContainsSampledData(report)
         if sampled:
-            # force an error if ever a query returns data that is sampled
+            # force an error if query returns data that is sampled
             print ('Error: Query contains sampled data!')
             raise SampledDataError
         rows = report.get('data', {}).get('rows', [])
@@ -158,7 +148,7 @@ def write_results(results, cur, conn, webpropertyid, profileid, table, col):
             insert_query= "insert into " + table + " VALUES ("+ value_string(col) + ")"
 
             for i, values in enumerate(dateRangeValues):
-                insert_data = (insert_date, webpropertyid, profileid, dimensions[0], dimensions[1], values.get('values')[0], values.get('values')[1], values.get('values')[2], values.get('values')[3], values.get('values')[4], values.get('values')[5], values.get('values')[6])
+                insert_data = (insert_date, webpropertyid, profileid, dimensions[0], dimensions[1], values.get('values')[0], values.get('values')[1], values.get('values')[2], values.get('values')[3], values.get('values')[4], values.get('values')[5], values.get('values')[6]) # adjust per number of columns needed
                 print insert_data
                 
                 try:
@@ -181,8 +171,7 @@ def main():
 
   try:
         try:
-            conn = psycopg2.connect(database=args.database, user=args.username, password=args.password,
-                                    host=args.host, port=args.port)
+			conn = psycopg2.connect(database=cfg.postgres['database'], user=cfg.postgres['username'], password=cfg.postgres['password'], host=cfg.postgres['host'], port=cfg.postgres['port'])
         except:
             raise
         else:
@@ -225,5 +214,5 @@ if __name__ == '__main__':
   try:
     main()
   except:
-    do_error_logging('main() handler exception:')
+    gen_utils.error_logging('main() handler exception:', str(path.basename(__file__)))
     raise
